@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VAR.DAT Editor Pro</title>
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+      padding: 20px;
+    }
+    h2 { text-align: center; color: #2c3e50; }
+    input[type="file"], #saveBtn, #exportBtn {
+      display: inline-block;
+      margin: 10px 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    input[type="file"]:hover, #saveBtn:hover, #exportBtn:hover {
+      background-color: #0056b3;
+    }
+    .section {
+      margin-top: 30px;
+      padding: 20px;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+    th { background-color: #ecf0f1; }
+    td { background-color: #fafafa; }
+    input[type="text"] {
+      width: 90%;
+      padding: 6px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    #topButton {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: #007BFF;
+      color: white;
+      padding: 15px;
+      border-radius: 50%;
+      font-size: 20px;
+      border: none;
+      cursor: pointer;
+      display: none;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    #topButton:hover { background-color: #0056b3; }
+    .footer {
+      text-align: center;
+      padding: 20px;
+      background-color: #2c3e50;
+      color: white;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>VAR.DAT Editor Pro</h2>
+  <input type="file" id="fileInput" accept=".dat">
+  <button id="saveBtn" style="display:none;">บันทึกไฟล์</button>
+  <button id="exportBtn" style="display:none;">Export CSV</button>
+  <div id="dataSections"></div>
+  <div id="loadingStatus" style="display:none;text-align:center;font-size:18px;margin-top:20px;">กำลังโหลดข้อมูล...</div>
+</div>
+
+<div class="footer">
+  <p>© 2025 YASKAWA Electric (Thailand) Co., Ltd.</p>
+</div>
+
+<button id="topButton" onclick="scrollToTop()">TOP</button>
+
+<script>
+  let originalData = [], modifiedData = [];
+  const shareCategories = ['B', 'I', 'D', 'S', 'P'];
+  const shareValues = { 'B': 'Byte', 'I': 'Integer', 'D': 'Double', 'S': 'String', 'P': 'Position' };
+
+  class DatEditor {
+    constructor(containerId) {
+      this.container = document.getElementById(containerId);
+    }
+    load(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const lines = e.target.result.split('\n');
+        originalData = [...lines];
+        modifiedData = [...lines];
+        this.renderSections(lines);
+        document.getElementById('loadingStatus').style.display = 'none';
+        document.getElementById('saveBtn').style.display = 'inline-block';
+        document.getElementById('exportBtn').style.display = 'inline-block';
+        localStorage.setItem('varDatBackup', JSON.stringify(modifiedData));
+      };
+      reader.readAsText(file);
+    }
+    renderSections(lines) {
+      this.container.innerHTML = '';
+      let currentCategory = '', categoryData = [];
+      lines.forEach((line) => {
+        line = line.trim();
+        if (line.startsWith('///')) {
+          if (currentCategory) this.addCategory(currentCategory, categoryData);
+          currentCategory = line.substring(3);
+          categoryData = [];
+        } else {
+          categoryData.push(line);
+        }
+      });
+      if (currentCategory) this.addCategory(currentCategory, categoryData);
+    }
+    addCategory(category, data) {
+      const section = document.createElement('div');
+      section.className = 'section';
+      section.innerHTML = `<h3>${category}</h3>`;
+      if (category === 'SHARE') {
+        const table = document.createElement('table');
+        table.innerHTML = `<thead><tr><th>ประเภท</th><th>จำนวน</th></tr></thead><tbody></tbody>`;
+        const tbody = table.querySelector('tbody');
+        shareCategories.forEach((cat) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `<td>${shareValues[cat]}</td><td><input type="text" value="${cat}" class="share-input"></td>`;
+          tbody.appendChild(row);
+        });
+        section.appendChild(table);
+      } else {
+        const table = document.createElement('table');
+        const thead = document.createElement('thead');
+        thead.innerHTML = `<tr><th>ข้อมูล</th></tr>`;
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        data.forEach((item, index) => {
+          const row = document.createElement('tr');
+          const values = item.split(',');
+          values.forEach((val, i) => {
+            const td = document.createElement('td');
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = val;
+            input.addEventListener('input', () => {
+              values[i] = input.value;
+              modifiedData[index] = values.join(',');
+              localStorage.setItem('varDatBackup', JSON.stringify(modifiedData));
+            });
+            input.addEventListener('blur', () => {
+              if (val.match(/^\d+$/) && isNaN(input.value)) {
+                input.style.borderColor = 'red';
+                alert('กรุณาใส่ตัวเลขเท่านั้น');
+              } else {
+                input.style.borderColor = '#ccc';
+              }
+            });
+            td.appendChild(input);
+            row.appendChild(td);
+          });
+          tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        section.appendChild(table);
+      }
+      this.container.appendChild(section);
+    }
+  }
+
+  const editor = new DatEditor('dataSections');
+
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      document.getElementById('loadingStatus').style.display = 'block';
+      editor.load(file);
+    }
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    const content = modifiedData.join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'VAR.DAT';
+    link.click();
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const csv = modifiedData.map(line => line.replace(/,/g, ';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'VAR.csv';
+    link.click();
+  });
+
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  window.onscroll = function () {
+    const btn = document.getElementById('topButton');
+    btn.style.display = (document.body.scrollTop > 200 || document.documentElement.scrollTop > 200) ? 'block' : 'none';
+  };
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const backup = localStorage.getItem('varDatBackup');
+    if (backup) {
+      modifiedData = JSON.parse(backup);
+      editor.renderSections(modifiedData);
+      document.getElementById('saveBtn').style.display = 'inline-block';
+      document.getElementById('exportBtn').style.display = 'inline-block';
+    }
+  });
+</script>
+</body>
+</html>

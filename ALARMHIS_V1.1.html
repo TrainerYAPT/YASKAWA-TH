@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="icon" type="image/icon.png" href="images/icon.png" />
+  <title>YASKAWA Alarm History Viewer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-white text-gray-800">
+  <div class="max-w-6xl mx-auto p-4">
+    <h1 class="text-2xl font-bold text-blue-700 mb-4">YASKAWA Alarm Log Viewer</h1>
+    <input type="file" id="logFile" class="mb-6" accept=".DAT,.txt" />
+    <button onclick="clearData()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mb-6 ml-4">Clear</button>
+
+    <!-- Tabs -->
+    <div class="mb-4 border-b">
+      <nav class="flex space-x-4" id="tabs">
+        <button class="tab-btn text-blue-600 border-b-2 border-blue-600 px-4 py-2" data-tab="MAJOR">MAJOR</button>
+        <button class="tab-btn text-gray-600 hover:text-blue-600 px-4 py-2" data-tab="MINOR">MINOR</button>
+        <button class="tab-btn text-gray-600 hover:text-blue-600 px-4 py-2" data-tab="USER">USER</button>
+      </nav>
+    </div>
+
+    <!-- Summary Table -->
+    <h2 class="text-xl font-semibold text-center mt-8 mb-4">Summary Table</h2>
+    <table class="w-full table-auto border-collapse border border-gray-300 mb-8" id="summaryTable">
+      <thead>
+        <tr class="bg-gray-100">
+          <th class="border p-2">Error Code</th>
+          <th class="border p-2">Description</th>
+          <th class="border p-2">Count</th>
+          <th class="border p-2">%</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <!-- Tab content -->
+    <div id="tab-content">
+      <div id="MAJOR" class="tab-panel">
+        <div class="relative w-[600px] h-[300px] mb-6 mx-auto">
+          <canvas id="chart-major"></canvas>
+        </div>
+        <table class="w-full table-auto border-collapse border border-gray-300">
+          <thead><tr class="bg-gray-100"><th class="border p-2">Code</th><th class="border p-2">Message</th><th class="border p-2">Timestamp</th></tr></thead>
+          <tbody id="table-major"></tbody>
+        </table>
+      </div>
+      <div id="MINOR" class="tab-panel hidden">
+        <div class="relative w-[600px] h-[300px] mb-6 mx-auto">
+          <canvas id="chart-minor"></canvas>
+        </div>
+        <table class="w-full table-auto border-collapse border border-gray-300">
+          <thead><tr class="bg-gray-100"><th class="border p-2">Code</th><th class="border p-2">Message</th><th class="border p-2">Timestamp</th></tr></thead>
+          <tbody id="table-minor"></tbody>
+        </table>
+      </div>
+      <div id="USER" class="tab-panel hidden">
+        <div class="relative w-[600px] h-[300px] mb-6 mx-auto">
+          <canvas id="chart-user"></canvas>
+        </div>
+        <table class="w-full table-auto border-collapse border border-gray-300">
+          <thead><tr class="bg-gray-100"><th class="border p-2">Code</th><th class="border p-2">Message</th><th class="border p-2">Timestamp</th></tr></thead>
+          <tbody id="table-user"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab-btn');
+    const panels = document.querySelectorAll('.tab-panel');
+
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabs.forEach(b => b.classList.remove('text-blue-600', 'border-blue-600'));
+        panels.forEach(p => p.classList.add('hidden'));
+        btn.classList.add('text-blue-600', 'border-blue-600');
+        document.getElementById(btn.dataset.tab).classList.remove('hidden');
+      });
+    });
+
+    document.getElementById('logFile').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      parseAlarmLog(text);
+    });
+
+    function parseAlarmLog(content) {
+      const lines = content.split(/\r?\n/);
+      const data = { MAJOR: [], MINOR: [], USER: [] };
+      let currentType = null;
+      let i = 0;
+
+      while (i < lines.length) {
+        const line = lines[i].trim();
+        if (line.startsWith('///')) {
+          if (line.includes('MAJOR')) currentType = 'MAJOR';
+          else if (line.includes('MINOR')) currentType = 'MINOR';
+          else if (line.includes('USER')) currentType = 'USER';
+          i++;
+          continue;
+        }
+        if (currentType && /\d{4,},/.test(line)) {
+          const codeLine = line.split(',');
+          const code = codeLine[0];
+          const message = codeLine[1];
+          let timestamp = '';
+          for (let j = i + 1; j < i + 10 && j < lines.length; j++) {
+            if (/\d{4}\/\d{2}\/\d{2}/.test(lines[j])) {
+              timestamp = lines[j].trim();
+              break;
+            }
+          }
+          data[currentType].push({ code, message, timestamp });
+        }
+        i++;
+      }
+
+      ['MAJOR', 'MINOR', 'USER'].forEach(type => {
+        const tbody = document.getElementById(`table-${type.toLowerCase()}`);
+        tbody.innerHTML = data[type].map(row => `
+          <tr>
+            <td class="border p-2">${row.code}</td>
+            <td class="border p-2">${row.message}</td>
+            <td class="border p-2">${row.timestamp}</td>
+          </tr>
+        `).join('');
+
+        const counts = {};
+        data[type].forEach(({ code }) => counts[code] = (counts[code] || 0) + 1);
+        const topCodes = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 5);
+        const canvas = document.getElementById(`chart-${type.toLowerCase()}`);
+        if (canvas.chartInstance) canvas.chartInstance.destroy();
+        canvas.chartInstance = new Chart(canvas, {
+          type: 'doughnut',
+          data: {
+            labels: topCodes.map(([code]) => code),
+            datasets: [{
+              label: 'Top Error Codes',
+              data: topCodes.map(([, count]) => count),
+              backgroundColor: ['#2563EB', '#60A5FA', '#93C5FD', '#BFDBFE', '#DBEAFE']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'top' }, title: { display: true, text: `Top Error Codes - ${type}` } }
+          }
+        });
+      });
+
+      // สร้าง Summary Table
+      const allData = [...data.MAJOR, ...data.MINOR, ...data.USER];
+      const total = allData.length;
+      const codeCount = {};
+      const codeDescriptions = {};
+
+      allData.forEach(item => {
+        codeCount[item.code] = (codeCount[item.code] || 0) + 1;
+        codeDescriptions[item.code] = item.message;
+      });
+
+      const summaryTable = document.querySelector('#summaryTable tbody');
+      summaryTable.innerHTML = '';
+
+      Object.entries(codeCount)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([code, count]) => {
+          const percentage = ((count / total) * 100).toFixed(2);
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td class="border p-2">${code}</td>
+            <td class="border p-2">${codeDescriptions[code]}</td>
+            <td class="border p-2">${count}</td>
+            <td class="border p-2">${percentage}%</td>
+          `;
+          summaryTable.appendChild(row);
+        });
+    }
+
+    function clearData() {
+      document.getElementById('logFile').value = '';
+      document.querySelector('#summaryTable tbody').innerHTML = '';
+
+      ['major', 'minor', 'user'].forEach(type => {
+        document.getElementById(`table-${type}`).innerHTML = '';
+        const canvas = document.getElementById(`chart-${type}`);
+        if (canvas.chartInstance) {
+          canvas.chartInstance.destroy();
+        }
+        canvas.chartInstance = new Chart(canvas, {
+          type: 'doughnut',
+          data: {
+            labels: [],
+            datasets: [{
+              label: 'Top Error Codes',
+              data: [],
+              backgroundColor: []
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'top' }, title: { display: true, text: `Top Error Codes - ${type.toUpperCase()}` } }
+          }
+        });
+      });
+    }
+  </script>
+</body>
+</html>

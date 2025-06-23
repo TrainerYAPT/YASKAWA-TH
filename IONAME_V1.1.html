@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/icon.png" href="images/icon.png" />
+  <title>YASKAWA - I/O Name Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Prompt', sans-serif;
+      background-color: #f0f4f8;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    input[type="text"] {
+      background-color: #e8f0fe;
+      border: 1px solid #ccc;
+    }
+    tr.highlight {
+      background-color: #ffeb3b !important;
+    }
+  </style>
+</head>
+<body class="p-6">
+
+  <div class="max-w-6xl mx-auto bg-white p-6 rounded-xl shadow-md">
+    <h1 class="text-2xl font-bold text-blue-800 mb-4">📘 YASKAWA I/O Name Editor</h1>
+
+    <div class="flex items-center gap-4 mb-6">
+      <input type="file" id="fileInput" accept=".dat" class="border p-2 rounded" />
+      <span id="filename" class="text-sm text-gray-600 italic"></span>
+      <button id="saveBtn" onclick="saveFile()" disabled class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded shadow">💾 Save</button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- IN SECTION -->
+      <div>
+        <h2 class="text-lg font-semibold text-blue-700 mb-2">IN Signals</h2>
+        <div class="overflow-auto max-h-[400px] border rounded-lg">
+          <table class="w-full table-auto text-sm">
+            <thead class="bg-blue-700 text-white">
+              <tr><th class="p-2 w-1/4">IN No.</th><th class="p-2">IN Name</th></tr>
+            </thead>
+            <tbody id="inTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- OT SECTION -->
+      <div>
+        <h2 class="text-lg font-semibold text-blue-700 mb-2">OUT Signals</h2>
+        <div class="overflow-auto max-h-[400px] border rounded-lg">
+          <table class="w-full table-auto text-sm">
+            <thead class="bg-blue-700 text-white">
+              <tr><th class="p-2 w-1/4">OUT No.</th><th class="p-2">OUT Name</th></tr>
+            </thead>
+            <tbody id="otTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let modifiedData = [];
+
+    document.getElementById('fileInput').addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      document.getElementById('filename').textContent = `📂 เปิดไฟล์: ${file.name}`;
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const lines = e.target.result.split('\n');
+        const inTable = document.getElementById('inTable');
+        const otTable = document.getElementById('otTable');
+        inTable.innerHTML = '';
+        otTable.innerHTML = '';
+        modifiedData = [...lines];
+
+        let section = '', index = 1;
+
+        lines.forEach((line, i) => {
+          line = line.trim();
+          if (line.startsWith('//IN')) {
+            section = 'IN';
+            index = 1;
+          } else if (line.startsWith('//OUT')) {
+            section = 'OT';
+            index = 1;
+          } else if (line.includes(',')) {
+            const values = line.split(',').map(v => v.trim());
+            values.forEach((value, vIdx) => {
+              const row = document.createElement('tr');
+              row.id = `${section}-${index}`;
+              row.innerHTML = `
+                <td class="p-2 bg-gray-100 text-center">${index}</td>
+                <td class="p-2"><input type="text" class="w-full rounded" value="${value}" onchange="updateData(${i}, ${vIdx}, this.value)"></td>`;
+              if (section === 'IN') inTable.appendChild(row);
+              if (section === 'OT') otTable.appendChild(row);
+              index++;
+            });
+          }
+        });
+
+        document.getElementById('saveBtn').disabled = false;
+      };
+
+      reader.readAsText(file);
+    });
+
+    function updateData(lineIndex, valueIndex, newValue) {
+      const parts = modifiedData[lineIndex].split(',');
+      parts[valueIndex] = newValue;
+      modifiedData[lineIndex] = parts.join(',');
+    }
+
+    function saveFile() {
+      const blob = new Blob([modifiedData.join('\n')], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'IONAME.dat';
+      link.click();
+    }
+  </script>
+
+</body>
+</html>
